@@ -58,6 +58,12 @@ Prompt {
 Action {
     type: "message",
     content: string
+} | {
+    type: "send_to",
+    content: {
+        chat_id: int,
+        message: string
+    }
 }
 ```
 Example:

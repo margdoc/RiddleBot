@@ -35,6 +35,10 @@ pub(crate) struct State {
 )]
 pub(crate) enum Action {
     Message(String),
+    SendTo {
+        chat_id: i64,
+        message: String,
+    }
 }
 
 #[derive(Deserialize, Debug, PartialEq)]

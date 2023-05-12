@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use teloxide::types::ChatId;
 
 use crate::{models_raw, utils::HandlerResult};
 
@@ -56,23 +57,27 @@ impl State {
 
 pub(crate) enum Action {
     Message(String),
+    SendTo(ChatId, String),
 }
 
 #[async_trait]
 pub(crate) trait ActionApplier {
     async fn apply_message(&mut self, message: &str) -> HandlerResult;
+    async fn apply_send_to(&mut self, chat_id: ChatId, message: &str) -> HandlerResult;
 }
 
 impl Action {
     pub(crate) fn new(action: models_raw::Action) -> Self {
         match action {
             models_raw::Action::Message(message) => Action::Message(message),
+            models_raw::Action::SendTo{ chat_id, message } => Action::SendTo(ChatId(chat_id), message),
         }
     }
 
     pub(crate) async fn apply(&self, applier: &mut impl ActionApplier) -> HandlerResult {
         match self {
             Action::Message(message) => applier.apply_message(message).await,
+            Action::SendTo(chat_id, message) => applier.apply_send_to(*chat_id, message).await,
         }
     }
 }

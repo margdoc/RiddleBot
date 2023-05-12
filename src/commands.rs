@@ -85,6 +85,12 @@ impl models::ActionApplier for Applier<'_> {
 
         Ok(())
     }
+
+    async fn apply_send_to(&mut self, chat_id: ChatId, message: &str) -> HandlerResult {
+        send_message(&self.bot, chat_id, message).await?;
+
+        Ok(())
+    }
 }
 
 async fn command_help(bot: Bot, msg: Message) -> HandlerResult {

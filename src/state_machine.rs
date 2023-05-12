@@ -65,6 +65,7 @@ mod tests {
     use super::*;
 
     use async_trait::async_trait;
+    use teloxide::types::ChatId;
 
     struct Applier {
         messages: Vec<String>,
@@ -79,6 +80,11 @@ mod tests {
     #[async_trait]
     impl super::models::ActionApplier for Applier {
         async fn apply_message(&mut self, message: &str) -> super::HandlerResult {
+            self.messages.push(message.to_string());
+            Ok(())
+        }
+
+        async fn apply_send_to(&mut self, _chat_id: ChatId, message: &str) -> super::HandlerResult {
             self.messages.push(message.to_string());
             Ok(())
         }
