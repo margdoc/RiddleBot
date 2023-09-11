@@ -23,7 +23,7 @@ pub(crate) enum Command {
     StopRiddle,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 enum DialogueState {
     #[default]
     None,

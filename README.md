@@ -8,7 +8,7 @@ Set enviroment variables:
 ## Available commands
 For admins:
 * `/help`
-* `/newriddle` starts the dialogue where it expects the riddle's name, description and state machine description
+* `/newriddle` starts the dialogue where it expects the riddle's code, name, description and state machine description
 * `/removeriddle` starts the dialogue where it expects the riddle's code
 * `/listriddles`
 

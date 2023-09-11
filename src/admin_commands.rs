@@ -24,29 +24,34 @@ enum AdminCommand {
     ListRiddles,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct RiddleName(String);
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct RiddleDescription(String);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum NewRiddleState {
-    Name,
+    Code,
+    Name {
+        code: Option<String>,
+    },
     Description {
+        code: Option<String>,
         name: RiddleName,
     },
     StateMachine {
+        code: Option<String>,
         name: RiddleName,
         description: RiddleDescription,
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum RemoveRiddleState {
     Code,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 enum DialogueState {
     #[default]
     None,
@@ -93,7 +98,7 @@ pub(crate) fn schema() -> UpdateHandler<Error> {
                 .branch(
                     case![AdminCommand::NewRiddle]
                         .inspect_async(riddles::update_data_func(DialogueState::NewRiddle(
-                            NewRiddleState::Name,
+                            NewRiddleState::Code,
                         )))
                         .endpoint(command_new_riddle),
                 )
@@ -109,14 +114,19 @@ pub(crate) fn schema() -> UpdateHandler<Error> {
             dptree::entry()
                 .branch(
                     case![DialogueState::NewRiddle(new_riddle_state)]
-                        .branch(case![NewRiddleState::Name].endpoint(new_riddle_name))
+                        .branch(case![NewRiddleState::Code].endpoint(new_riddle_code))
+                        .branch(case![NewRiddleState::Name { code }].endpoint(new_riddle_name))
                         .branch(
-                            case![NewRiddleState::Description { name }]
+                            case![NewRiddleState::Description { code, name }]
                                 .endpoint(new_riddle_description),
                         )
                         .branch(
-                            case![NewRiddleState::StateMachine { name, description }]
-                                .endpoint(new_riddle_state_machine),
+                            case![NewRiddleState::StateMachine {
+                                code,
+                                name,
+                                description
+                            }]
+                            .endpoint(new_riddle_state_machine),
                         ),
                 )
                 .branch(
@@ -159,8 +169,18 @@ async fn command_list_riddles(bot: Bot, riddles: riddles::Riddles, msg: Message)
     Ok(())
 }
 
+static RANDOM_RIDDLE_CODE: &str = "RANDOM";
+
 async fn command_new_riddle(bot: Bot, msg: Message) -> HandlerResult {
-    send_message(&bot, msg.chat.id, "What is the name of the riddle?").await?;
+    send_message(
+        &bot,
+        msg.chat.id,
+        format!(
+            "What is the code for your riddle? ({} if you want us to randomize)",
+            RANDOM_RIDDLE_CODE
+        ),
+    )
+    .await?;
     Ok(())
 }
 
@@ -169,15 +189,51 @@ async fn command_remove_riddle(bot: Bot, msg: Message) -> HandlerResult {
     Ok(())
 }
 
+async fn new_riddle_code(
+    bot: Bot,
+    msg: Message,
+    dialogue_state_mut: ChatData<DialogueState>,
+    riddles_mut: riddles::Riddles,
+) -> HandlerResult {
+    let code = msg.text().unwrap();
+    let chat_id = msg.chat.id;
+    let riddles = riddles_mut.lock().await;
+    if riddles.contains_key(code) {
+        send_message(
+            &bot,
+            chat_id,
+            format!("Riddle with code `{}` already exists!", code),
+        )
+        .await?;
+        return Ok(());
+    }
+    riddles::update_data(
+        DialogueState::NewRiddle(NewRiddleState::Name {
+            code: if code == RANDOM_RIDDLE_CODE {
+                None
+            } else {
+                Some(code.to_owned())
+            },
+        }),
+        msg,
+        dialogue_state_mut,
+    )
+    .await;
+    send_message(&bot, chat_id, "What is the name of the riddle?").await?;
+    Ok(())
+}
+
 async fn new_riddle_name(
     bot: Bot,
     msg: Message,
     dialogue_state_mut: ChatData<DialogueState>,
+    code: Option<String>,
 ) -> HandlerResult {
     let name = msg.text().unwrap();
     send_message(&bot, msg.chat.id, "What is the description of the riddle?").await?;
     riddles::update_data(
         DialogueState::NewRiddle(NewRiddleState::Description {
+            code,
             name: RiddleName(name.to_owned()),
         }),
         msg,
@@ -191,7 +247,7 @@ async fn new_riddle_description(
     bot: Bot,
     msg: Message,
     dialogue_state_mut: ChatData<DialogueState>,
-    name: RiddleName,
+    (code, name): (Option<String>, RiddleName),
 ) -> HandlerResult {
     let description = msg.text().unwrap();
     send_message(
@@ -202,6 +258,7 @@ async fn new_riddle_description(
     .await?;
     riddles::update_data(
         DialogueState::NewRiddle(NewRiddleState::StateMachine {
+            code,
             name,
             description: RiddleDescription(description.to_owned()),
         }),
@@ -224,7 +281,7 @@ async fn new_riddle_state_machine(
     bot: Bot,
     msg: Message,
     dialogue_state_mut: ChatData<DialogueState>,
-    (name, description): (RiddleName, RiddleDescription),
+    (code, name, description): (Option<String>, RiddleName, RiddleDescription),
     riddles_mut: riddles::Riddles,
 ) -> HandlerResult {
     let state_machine_str = msg.text().unwrap();
@@ -242,20 +299,37 @@ async fn new_riddle_state_machine(
                 state_machine: state_machine::StateMachine::new(state_machine),
             };
 
-            let code = {
-                let mut riddles = riddles_mut.lock().await;
-                let code = loop {
-                    let code = random_string();
-                    if !riddles.contains_key(&code) {
-                        break code;
+            let code = match code {
+                Some(code) => {
+                    let mut riddles = riddles_mut.lock().await;
+                    if riddles.contains_key(&code) {
+                        send_message(
+                            &bot,
+                            chat_id,
+                            format!("Riddle with code `{}` already exists!", code),
+                        )
+                        .await?;
+                        return Ok(());
                     }
-                };
 
-                riddles.insert(code.clone(), riddle);
-                code
+                    riddles.insert(code.clone(), riddle);
+                    code
+                }
+                None => {
+                    let mut riddles = riddles_mut.lock().await;
+                    let code = loop {
+                        let code = random_string();
+                        if !riddles.contains_key(&code) {
+                            break code;
+                        }
+                    };
+
+                    riddles.insert(code.clone(), riddle);
+                    code
+                }
             };
 
-            send_message(&bot, chat_id, format!("Riddle created\\! Code: `{}`", code)).await?;
+            send_message(&bot, chat_id, format!("Riddle created\n! Code: `{}`", code)).await?;
         }
         Err(e) => {
             send_message(&bot, msg.chat.id, format!("Error: {}", e)).await?;

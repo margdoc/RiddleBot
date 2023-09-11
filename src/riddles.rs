@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::state_machine;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ChatState {
     pub riddle: String,
     pub state: String,
@@ -32,7 +32,7 @@ pub(crate) async fn get_data<D: Clone + Default>(data: ChatData<D>, msg: Message
         .unwrap_or_default()
 }
 
-pub(crate) fn update_data_func<D: Clone + Send + Sync + 'static>(
+pub(crate) fn update_data_func<D: Clone + Send + Sync + std::fmt::Debug + 'static>(
     new_data: D,
 ) -> impl Injectable<DependencyMap, (), (Message, ChatData<D>)> {
     move |msg: Message, data_mut: ChatData<D>| {
@@ -41,7 +41,9 @@ pub(crate) fn update_data_func<D: Clone + Send + Sync + 'static>(
     }
 }
 
-pub(crate) async fn update_data<D>(new_data: D, msg: Message, data_mut: ChatData<D>) {
+pub(crate) async fn update_data<D: std::fmt::Debug>(new_data: D, msg: Message, data_mut: ChatData<D>) {
     let mut data = data_mut.lock().await;
+    // let prev_data = data.get(&msg.chat.id);
+    // println!("chat_id: {}, prev_data: {:?}, new_data: {:?}", msg.chat.id, prev_data, new_data);
     data.insert(msg.chat.id, new_data);
 }

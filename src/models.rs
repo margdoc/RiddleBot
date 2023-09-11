@@ -70,7 +70,9 @@ impl Action {
     pub(crate) fn new(action: models_raw::Action) -> Self {
         match action {
             models_raw::Action::Message(message) => Action::Message(message),
-            models_raw::Action::SendTo{ chat_id, message } => Action::SendTo(ChatId(chat_id), message),
+            models_raw::Action::SendTo { chat_id, message } => {
+                Action::SendTo(ChatId(chat_id), message)
+            }
         }
     }
 
